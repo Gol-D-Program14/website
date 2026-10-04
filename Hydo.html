@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cloud Hub - IoT Sensor Data Transfer</title>
+<style>
+:root {
+  --bg: #0b1220;
+--panel: #111c30;
+  --panel2: #182642;
+  --border: #27385c;
+  --text: #e8eefc;
+  --muted: #8ea0c4;
+  --accent: #38bdf8;
+  --green: #34d399;
+  --red: #f87171;
+  --amber: #fbbf24;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: radial-gradient(1000px 500px at 20% -10%, #16294a 0%, var(--bg) 55%);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 20px;
+}
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px; margin-bottom: 20px;
+}
+header h1 { font-size: 22px; letter-spacing: .5px; }
+header h1 span { color: var(--accent); }
+.pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-radius: 30px;
+  background: var(--panel); border: 1px solid var(--border);
+  font-size: 13px; color: var(--muted);
+}
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+.dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.dot.stream { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+
+.grid { display: grid; grid-template-columns: repeat(12,1fr); gap: 16px; }
+.card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 14px; padding: 16px;
+}
+.card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); margin-bottom: 12px; }
+
+.controls { grid-column: span 12; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+button {
+  padding: 10px 16px; border: none; border-radius: 8px; font-size: 14px;
+  font-weight: 600; cursor: pointer; background: var(--panel2); color: var(--text);
+  border: 1px solid var(--border); transition: all .2s;
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: #062b3d; border-color: var(--accent); }
+button.primary:hover { filter: brightness(1.1); }
+button.danger { color: var(--red); border-color: var(--red); }
+button:disabled { opacity: .4; cursor: not-allowed; }
+select, input[type=number] {
+  padding: 9px 10px; background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); font-size: 14px;
+}
+label { font-size: 13px; color: var(--muted); }
+.spacer { flex: 1; }
+
+.sensors { grid-column: span 12; }
+.sensor-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap: 14px; }
+.sensor-card {
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px; position: relative; overflow: hidden;
+}
+.sensor-card .icon { font-size: 24px; }
+.sensor-card .name { font-size: 12px; color: var(--muted); margin-top: 8px; }
+.sensor-card .value { font-size: 28px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.sensor-card .unit { font-size: 13px; color: var(--muted); font-weight: 400; }
+.sensor-card.hot .value { color: var(--red); }
+.sensor-card.warn .value { color: var(--amber); }
+.sensor-card.ok .value { color: var(--green); }
+.sensor-card .spark { position: absolute; bottom: 0; left: 0; right: 0; height: 26px; }
+
+.chart-area { grid-column: span 8; min-width: 0; }
+.side { grid-column: span 4; display: flex; flex-direction: column; gap: 16px; }
+canvas { width: 100%; height: 260px; display: block; }
+
+.packet-area { grid-column: span 12; }
+.packet-box {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px; margin-bottom: 12px;
+}
+.packet-box .arrow { color: var(--accent); font-size: 20px; }
+.packet-box input {
+  flex: 1; min-width: 220px; padding: 10px 12px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); font-family: 'Consolas',monospace; font-size: 13px;
+}
+.packet-box input:focus { outline: none; border-color: var(--accent); }
+
+.log-box { grid-column: span 12; }
+.log-window {
+  max-height: 220px; overflow-y: auto;
+  font-family: 'Consolas','Courier New',monospace; font-size: 12px;
+  background: #081120; border: 1px solid var(--border); border-radius: 8px; padding: 10px;
+}
+.log-window .entry { padding: 3px 0; border-bottom: 1px solid #14203a; }
+.log-window .time { color: var(--muted); margin-right: 8px; }
+.log-window .tag { color: var(--accent); }
+.log-window .alert { color: var(--red); font-weight: 600; }
+
+footer { margin-top: 20px; text-align: center; color: var(--muted); font-size: 12px; }
+@media (max-width: 900px) { .chart-area, .side, .cam-wrap, .store-wrap { grid-column: span 12; grid-template-columns: 1fr; } }
+
+/* Camera */
+.cam-area { grid-column: span 12; }
+.cam-wrap { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
+.video-box {
+  position: relative; background: #050b16; border: 1px solid var(--border);
+  border-radius: 12px; overflow: hidden; min-height: 280px;
+  display: flex; align-items: center; justify-content: center;
+}
+.video-box video, .video-box img { width: 100%; max-height: 360px; object-fit: contain; }
+.video-box .placeholder { color: var(--muted); font-size: 14px; text-align: center; padding: 20px; }
+.video-overlay {
+  position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,.55);
+  padding: 6px 10px; border-radius: 8px; font-size: 12px; color: var(--green);
+}
+.video-overlay.off { color: var(--muted); }
+.cam-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+/* Login overlay */
+#loginOverlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: radial-gradient(1000px 500px at 20% -10%, #16294a 0%, var(--bg) 55%);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  transition: opacity .4s ease;
+}
+#loginOverlay.hidden { opacity: 0; pointer-events: none; }
+
+/* Offline storage */
+.store-area { grid-column: span 12; }
+.store-wrap { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; }
+.store-stats { display: flex; flex-wrap: wrap; gap: 16px; }
+.stat-box { flex: 1; min-width: 120px; }
+.stat-box .num { font-size: 26px; font-weight: 700; color: var(--accent); }
+.stat-box .lbl { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.store-status {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 12px; border-radius: 30px; font-size: 12px; font-weight: 600;
+  border: 1px solid var(--border); background: var(--panel2);
+}
+.store-status.online { color: var(--green); border-color: var(--green); }
+.store-status.offline { color: var(--amber); border-color: var(--amber); }
+.store-status.buffered { color: var(--accent); border-color: var(--accent); }
+.store-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.login-box {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+  padding: 34px 30px; width: 100%; max-width: 360px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+}
+.login-box .logo { font-size: 40px; text-align: center; margin-bottom: 6px; }
+.login-box h1 { text-align: center; font-size: 20px; margin-bottom: 4px; }
+.login-box p.sub { text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 22px; }
+.login-field { margin-bottom: 14px; }
+.login-field label { display: block; margin-bottom: 6px; font-size: 12px; color: var(--muted); }
+.login-field input {
+  width: 100%; padding: 11px 12px; background: var(--panel2);
+  border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px;
+}
+.login-field input:focus { outline: none; border-color: var(--accent); }
+.login-error { color: var(--red); font-size: 13px; min-height: 18px; margin-bottom: 10px; text-align: center; }
+.login-box button {
+  width: 100%; padding: 12px; background: var(--accent); color: #062b3d;
+  border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer;
+}
+.login-box button:hover { filter: brightness(1.1); }
+.login-hint { margin-top: 16px; text-align: center; font-size: 12px; color: var(--muted); }
+#dashboard { display: none; }
+#dashboard.visible { display: block; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN GATE -->
+<div id="loginOverlay">
+  <div class="login-box">
+    <div class="logo">☁️</div>
+    <h1>Cloud Hub</h1>
+    <p class="sub">Sign in to access sensor data</p>
+    <div class="login-field">
+      <label for="loginUser">Username</label>
+      <input type="text" id="loginUser" autocomplete="username" placeholder="Enter username">
+    </div>
+    <div class="login-field">
+      <label for="loginPass">Password</label>
+      <input type="password" id="loginPass" autocomplete="current-password" placeholder="Enter password">
+    </div>
+    <div class="login-error" id="loginError"></div>
+    <button id="btnLogin">🔐 Sign In</button>
+    <div class="login-hint">Default: <strong>admin</strong> / <strong>sensor123</strong></div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard">
+<header>
+<h1>☁️ Cloud <span>Hub</span></h1>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;">
+    <span class="pill"><span class="dot" id="connDot"></span><span id="sourceLabel">No source connected</span></span>
+  </div>
+</header>
+
+<div class="grid">
+
+  <!-- Controls -->
+  <section class="card controls">
+    <h2>Data Source &amp; Transfer Controls</h2>
+    <div class="row">
+      <button class="primary" id="btnSimulate">▶ Start Simulation</button>
+      <button id="btnSerial">🔌 Connect Microcontroller (Serial)</button>
+      <button class="danger" id="btnStop" disabled>⏹ Stop Stream</button>
+      <div class="spacer"></div>
+      <label>Interval</label>
+      <select id="interval" style="width:150px;">
+        <option value="60000" selected>1 minute</option>
+        <option value="120000">2 minutes</option>
+        <option value="180000">3 minutes</option>
+        <option value="240000">4 minutes</option>
+        <option value="300000">5 minutes</option>
+      </select>
+    </div>
+  </section>
+
+  <!-- Live sensors -->
+  <section class="card sensors">
+    <h2>Live Sensor Readings</h2>
+    <div class="sensor-cards" id="sensorCards"></div>
+  </section>
+
+  <!-- Chart -->
+  <section class="card chart-area">
+    <h2>Temperature &amp; Humidity Trend</h2>
+    <canvas id="chart"></canvas>
+  </section>
+
+  <!-- Side: packet + status -->
+  <div class="side">
+    <section class="card">
+      <h2>📦 Incoming Data Packet</h2>
+      <div class="packet-box">
+        <span class="arrow">⟶</span>
+        <input id="packetInput" placeholder="Received packet appears here... (e.g. T:25.5,H:60,L:800,M:0)">
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button id="btnParse" style="flex:1;">Parse Packet</button>
+        <button id="btnClearPacket" style="flex:1;">Clear</button>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.6;">
+        Format: <code style="color:var(--accent)">T:value,H:value,L:value,M:0or1</code><br>
+        T=Temperature, H=Humidity, L=Light, M=Motion
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>⚙️ Alerts &amp; Status</h2>
+      <div id="alerts" style="font-size:13px;color:var(--muted);line-height:1.7;">
+        <div>• No alerts</div>
+      </div>
+    </section>
+  </div>
+
+<!-- Camera -->
+  <section class="card cam-area">
+    <h2>📷 Camera Feed</h2>
+    <div class="cam-wrap">
+      <div class="video-box" id="videoBox">
+        <video id="video" autoplay muted playsinline style="display:none;"></video>
+        <img id="snapshot" alt="camera" style="display:none;">
+        <div class="placeholder" id="videoPlaceholder">Camera not active.<br>Click "📷 Open Camera".</div>
+        <div class="video-overlay off" id="videoOverlay">● OFFLINE</div>
+      </div>
+      <div>
+        <div class="cam-actions">
+          <button id="btnCam" class="primary">📷 Open Camera</button>
+          <button id="btnCapture">📸 Capture Snapshot</button>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <label>Source:</label>
+          <select id="camSource">
+            <option value="webcam">Webcam</option>
+            <option value="ip">IP Camera (URL)</option>
+            <option value="file">Upload file</option>
+          </select>
+        </div>
+        <input type="text" id="ipUrl" placeholder="http://192.168.1.100:8080/video" style="flex:1;min-width:200px;display:none;margin-top:8px;">
+        <input type="file" id="camFile" accept="image/*,video/*" style="display:none;margin-top:8px;">
+      </div>
+    </div>
+  </section>
+
+<!-- Offline Storage -->
+  <section class="card store-area">
+    <h2>💾 Offline Data Storage <span style="text-transform:none;color:var(--muted);font-size:12px;">(survives internet outages)</span></h2>
+    <div class="store-wrap">
+      <div>
+        <div class="store-stats">
+          <div class="stat-box"><div class="num" id="storeCount">0</div><div class="lbl">Records stored</div></div>
+          <div class="stat-box"><div class="num" id="offlineCount">0</div><div class="lbl">Saved while offline</div></div>
+          <div class="stat-box"><div class="num" id="storeSize">0 KB</div><div class="lbl">Storage used</div></div>
+        </div>
+        <div class="store-actions">
+          <button id="btnExport" class="primary">⬇️ Download Data (CSV)</button>
+          <button id="btnExportJSON">⬇️ Download Backup (JSON)</button>
+          <button id="btnClearStore" class="danger">🗑️ Clear Stored Data</button>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.6;">
+          Every sensor reading is automatically saved to this browser's local storage (IndexedDB). If the internet goes down, data keeps accumulating here and nothing is lost. When you're back online, download the data or sync it to the cloud.
+        </p>
+      </div>
+      <div>
+        <div class="store-status online" id="storeStatus"><span class="dot" style="background:currentColor;box-shadow:0 0 6px currentColor;"></span> Checking connection...</div>
+        <div style="margin-top:12px;font-size:12px;color:var(--muted);line-height:1.7;">
+          <div>• <strong>Online</strong>: data is stored and ready to sync.</div>
+          <div>• <strong>Offline</strong>: readings are buffered locally so nothing is lost.</div>
+          <div>• Auto-detects internet state using the browser's connectivity events.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Log -->
+  <section class="card log-box">
+    <h2>Data Transfer Log <span style="text-transform:none;color:var(--muted);" id="logCount"></span></h2>
+    <div class="log-window" id="logWindow"></div>
+  </section>
+
+</div>
+
+<footer>Connect a microcontroller via USB (Web Serial) &middot; Stream format: T:25.5,H:60,L:800,M:0 &middot; Chrome/Edge required for Serial</footer>
+</div>
+
+<script>
+/* ===== LOGIN AUTHENTICATION ===== */
+(function(){
+  const VALID_USER = 'admin';
+  const VALID_PASS = 'sensor123';
+
+const overlay = document.getElementById('loginOverlay');
+  const dashboard = document.getElementById('dashboard');
+  const userEl = document.getElementById('loginUser');
+  const passEl = document.getElementById('loginPass');
+  const errEl = document.getElementById('loginError');
+  const btnLogin = document.getElementById('btnLogin');
+
+  function showDashboard() {
+    dashboard.classList.add('visible');
+    overlay.classList.add('hidden');
+    setTimeout(()=>{ overlay.style.display = 'none'; }, 400);
+  }
+
+  function attemptLogin() {
+    const u = userEl.value.trim();
+    const p = passEl.value;
+    if (u === VALID_USER && p === VALID_PASS) {
+      errEl.textContent = '';
+      try { sessionStorage.setItem('cloudHubAuth','1'); } catch(e){}
+      showDashboard();
+    } else {
+      errEl.textContent = 'Invalid username or password.';
+      passEl.value = '';
+      passEl.focus();
+    }
+  }
+
+  let authed = false;
+  try { authed = sessionStorage.getItem('cloudHubAuth') === '1'; } catch(e){}
+  if (authed) showDashboard();
+
+  btnLogin.addEventListener('click', attemptLogin);
+  [userEl, passEl].forEach(el => {
+    el.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') attemptLogin(); });
+  });
+})();
+
+
+const video = document.getElementById('video');
+const snapshot = document.getElementById('snapshot');
+const videoPlaceholder = document.getElementById('videoPlaceholder');
+const videoOverlay = document.getElementById('videoOverlay');
+let camStream = null;
+
+function setCamActive(on) {
+  videoOverlay.classList.toggle('off', !on);
+  videoOverlay.textContent = on ? '● LIVE' : '● OFFLINE';
+  videoPlaceholder.style.display = on ? 'none' : 'block';
+}
+
+async function openWebcam() {
+  if (camStream) { camStream.getTracks().forEach(t=>t.stop()); }
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    video.srcObject = camStream;
+    video.style.display = 'block';
+    snapshot.style.display = 'none';
+    videoPlaceholder.style.display = 'none';
+    setCamActive(true);
+    addLog('Camera','webcam','Webcam active','info');
+  } catch(e) {
+    addLog('Camera','error','Webcam access denied','alert');
+  }
+}
+
+function openIP(url) {
+  snapshot.src = url;
+  snapshot.style.display = 'block';
+  video.style.display = 'none';
+  videoPlaceholder.style.display = 'none';
+  setCamActive(true);
+  addLog('Camera','ip',`Streaming ${url}`,'info');
+}
+
+function openFile(file) {
+  const url = URL.createObjectURL(file);
+  if (file.type.startsWith('video')) {
+    video.src = url;
+    video.style.display = 'block';
+    snapshot.style.display = 'none';
+    videoPlaceholder.style.display = 'none';
+    setCamActive(true);
+  } else {
+    snapshot.src = url;
+    snapshot.style.display = 'block';
+    video.style.display = 'none';
+    videoPlaceholder.style.display = 'none';
+    setCamActive(true);
+  }
+  addLog('Camera','file',`Loaded ${file.name}`,'info');
+}
+
+document.getElementById('btnCam').addEventListener('click', () => {
+  const type = document.getElementById('camSource').value;
+  if (type === 'webcam') openWebcam();
+  else if (type === 'ip') {
+    const url = document.getElementById('ipUrl').value.trim();
+    if (url) openIP(url); else addLog('Camera','error','Enter an IP camera URL','alert');
+  } else {
+    document.getElementById('camFile').click();
+  }
+});
+
+document.getElementById('camSource').addEventListener('change', (e)=>{
+  document.getElementById('ipUrl').style.display = e.target.value==='ip' ? 'block':'none';
+  document.getElementById('camFile').style.display = e.target.value==='file' ? 'block':'none';
+});
+
+document.getElementById('camFile').addEventListener('change', (e)=>{
+  if (e.target.files[0]) openFile(e.target.files[0]);
+});
+
+document.getElementById('btnCapture').addEventListener('click', ()=>{
+  try {
+    const c = document.createElement('canvas');
+    c.width = video.videoWidth || 640;
+    c.height = video.videoHeight || 480;
+    c.getContext('2d').drawImage(video,0,0);
+    snapshot.src = c.toDataURL('image/png');
+    snapshot.style.display='block';
+    addLog('Camera','capture','Snapshot captured','info');
+  } catch(e){ addLog('Camera','error','No frame to capture','alert'); }
+});
+
+const SENSORS = {
+  T: { name:'Temperature',     unit:'°C',  icon:'🌡️', min:15, max:40,  warn:[28,32], scale:2 },
+  H: { name:'Humidity',        unit:'%',   icon:'💧', min:20, max:90,  warn:[70,80], scale:1 },
+  L: { name:'Light Intensity', unit:'lx',  icon:'💡', min:0,  max:1000, warn:null,    scale:0 },
+  M: { name:'Motion',          unit:'det', icon:'🚶', min:0,  max:1,    warn:null,    scale:0 },
+};
+
+const sensorCardsEl = document.getElementById('sensorCards');
+const canvas = document.getElementById('chart');
+const ctx = canvas.getContext('2d');
+const logWindow = document.getElementById('logWindow');
+const logCount = document.getElementById('logCount');
+const alertsEl = document.getElementById('alerts');
+const packetInput = document.getElementById('packetInput');
+
+const state = {
+  values: {},
+  history: {},
+  running: false,
+  mode: null,
+  timer: null,
+  serialPort: null,
+  reader: null,
+  portOpen: false,
+  serialBuf: '',
+};
+
+// ===== OFFLINE DATA STORAGE (IndexedDB) =====
+const STORE_DB = 'cloudHubStore';
+const STORE_NAME = 'sensorRecords';
+let storeDB = null;
+
+function openStore() {
+  return new Promise((resolve, reject) => {
+    if (storeDB) return resolve(storeDB);
+    if (!window.indexedDB) return reject(new Error('IndexedDB not supported'));
+    const req = indexedDB.open(STORE_DB, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+        store.createIndex('ts', 'ts');
+        store.createIndex('offline', 'offline');
+      }
+    };
+    req.onsuccess = () => { storeDB = req.result; resolve(storeDB); };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveReading(rec) {
+  try {
+    const db = await openStore();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).add(rec);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) { /* storage unavailable */ }
+}
+
+async function getAllRecords() {
+  try {
+    const db = await openStore();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const req = tx.objectStore(STORE_NAME).getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) { return []; }
+}
+
+async function clearAllRecords() {
+  try {
+    const db = await openStore();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).clear();
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) { /* ignore */ }
+}
+
+// Online/offline tracking
+let isOnline = navigator.onLine;
+let offlineSaved = 0;
+
+function updateStoreUI() {
+  getAllRecords().then(records => {
+    const count = records.length;
+    const offline = records.filter(r => r.offline).length;
+    document.getElementById('storeCount').textContent = count;
+    document.getElementById('offlineCount').textContent = offline;
+    const bytes = JSON.stringify(records).length;
+    document.getElementById('storeSize').textContent = bytes > 1024 ? (bytes/1024).toFixed(1)+' KB' : bytes+' B';
+
+    const status = document.getElementById('storeStatus');
+    if (isOnline) {
+      status.className = 'store-status online';
+      status.innerHTML = '<span class="dot" style="background:currentColor;box-shadow:0 0 6px currentColor;"></span> Online — data ready to sync';
+    } else {
+      status.className = 'store-status offline';
+      status.innerHTML = '<span class="dot" style="background:currentColor;box-shadow:0 0 6px currentColor;"></span> Offline — buffering ' + offline + ' record(s) locally';
+    }
+  });
+}
+
+function downloadFile(filename, content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+document.getElementById('btnExport').addEventListener('click', () => {
+  getAllRecords().then(records => {
+    if (!records.length) { addLog('Storage','export','No stored data to export','alert'); return; }
+    const header = 'id,timestamp,datetime,sensor,value,unit,offline';
+    const rows = records.map(r => `${r.id},${r.ts},"${new Date(r.ts).toLocaleString()}",${r.key},"${r.value}","${r.unit}",${r.offline?'yes':'no'}`).join('\n');
+    downloadFile('cloud-hub-data.csv', header + '\n' + rows, 'text/csv');
+    addLog('Storage','export',`Exported ${records.length} records to CSV`,'info');
+  });
+});
+
+document.getElementById('btnExportJSON').addEventListener('click', () => {
+  getAllRecords().then(records => {
+    if (!records.length) { addLog('Storage','export','No stored data to export','alert'); return; }
+    downloadFile('cloud-hub-backup.json', JSON.stringify(records, null, 2), 'application/json');
+    addLog('Storage','export',`Exported ${records.length} records to JSON backup`,'info');
+  });
+});
+
+document.getElementById('btnClearStore').addEventListener('click', () => {
+  if (!confirm('Clear all stored sensor data? This cannot be undone.')) return;
+  clearAllRecords().then(() => {
+    offlineSaved = 0;
+    updateStoreUI();
+    addLog('Storage','clear','All stored data cleared','info');
+  });
+});
+
+window.addEventListener('online', () => { isOnline = true; updateStoreUI(); addLog('Status','online','Connection restored','info'); });
+window.addEventListener('offline', () => { isOnline = false; updateStoreUI(); addLog('Status','offline','Connection lost — data will be buffered locally','alert'); });
+
+// Hook into pushReading to persist each reading
+const _push = pushReading;
+pushReading = function(key, v, t) {
+  _push(key, v, t);
+  const s = SENSORS[key];
+  saveReading({
+    ts: Date.now(),
+    key,
+    value: v,
+    unit: s ? s.unit : '',
+    offline: !isOnline
+  });
+  if (!isOnline) offlineSaved++;
+  updateStoreUI();
+};
+updateStoreUI();
+
+// ===== Build sensor cards =====
+function buildCards() {
+  sensorCardsEl.innerHTML = '';
+  for (const [key, s] of Object.entries(SENSORS)) {
+    const card = document.createElement('div');
+    card.className = 'sensor-card';
+    card.id = 'card-' + key;
+    card.innerHTML = `
+      <span class="icon">${s.icon}</span>
+      <div class="name">${s.name}</div>
+      <div class="value"><span id="val-${key}">--</span> <span class="unit">${s.unit}</span></div>
+      <canvas class="spark" id="spark-${key}" width="400" height="26"></canvas>`;
+    sensorCardsEl.appendChild(card);
+  }
+}
+buildCards();
+
+// ===== Logging =====
+function addLog(source, tag, msg, type) {
+  const el = document.createElement('div');
+  el.className = 'entry';
+  const time = new Date().toLocaleTimeString();
+  el.innerHTML = `<span class="time">${time}</span><span class="tag">[${source}${tag ? '/'+tag : ''}]</span> ${type==='alert'?'<span class="alert">':''}${msg}${type==='alert'?'</span>':''}`;
+  logWindow.prepend(el);
+  while (logWindow.children.length > 200) logWindow.lastChild.remove();
+  logCount.textContent = `(${logWindow.children.length} entries)`;
+}
+
+// ===== Push a reading =====
+function pushReading(key, v, t) {
+  state.values[key] = v;
+  if (!state.history[key]) state.history[key] = [];
+  state.history[key].push({ t, v });
+  if (state.history[key].length > 80) state.history[key].shift();
+
+  const valEl = document.getElementById('val-' + key);
+  if (valEl) valEl.textContent = v;
+  const card = document.getElementById('card-' + key);
+  if (card) {
+    card.classList.remove('hot', 'warn', 'ok');
+    const s = SENSORS[key];
+    if (s.warn) {
+      if (v >= s.warn[1]) card.classList.add('hot');
+      else if (v >= s.warn[0]) card.classList.add('warn');
+      else card.classList.add('ok');
+    } else card.classList.add('ok');
+  }
+  drawSpark(key);
+  drawChart();
+  checkAlert(key, v);
+}
+
+function checkAlert(key, v) {
+  const s = SENSORS[key];
+  if (!s.warn) return;
+  if (v >= s.warn[1]) {
+    addLog('Alert', key, `${s.name} CRITICAL: ${v}${s.unit}`, 'alert');
+    setAlertItem(key, `${s.name} CRITICAL: ${v}${s.unit}`, 'crit');
+  } else if (v >= s.warn[0]) {
+    addLog('Alert', key, `${s.name} warning: ${v}${s.unit}`, 'alert');
+    setAlertItem(key, `${s.name} warning: ${v}${s.unit}`, 'warn');
+  } else {
+    removeAlert(key);
+  }
+}
+
+function setAlertItem(key, text, cls) {
+  let el = document.getElementById('alert-' + key);
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'alert-' + key;
+    alertsEl.appendChild(el);
+  }
+  el.className = 'alert-item ' + cls;
+  el.textContent = '• ' + text;
+}
+
+function removeAlert(key) {
+  const el = document.getElementById('alert-' + key);
+  if (el) el.remove();
+  if (!alertsEl.querySelector('.alert-item')) {
+    alertsEl.innerHTML = '<div>• No alerts</div>';
+  }
+}
+
+// ===== Sparklines =====
+function drawSpark(key) {
+  const c = document.getElementById('spark-' + key);
+  if (!c) return;
+  const g = c.getContext('2d');
+  const data = state.history[key] || [];
+  g.clearRect(0, 0, c.width, c.height);
+  if (data.length < 2) return;
+  const s = SENSORS[key], pad = 4;
+  const w = c.width - pad*2, h = c.height - pad*2;
+  g.strokeStyle = '#34d399';
+  g.lineWidth = 1.5;
+  g.beginPath();
+  data.forEach((p, i) => {
+    const x = pad + (i/(data.length-1))*w;
+    const y = pad + h - ((p.v - s.min)/(s.max - s.min))*h;
+    i === 0 ? g.moveTo(x, y) : g.lineTo(x, y);
+  });
+  g.stroke();
+}
+
+// ===== Main chart (dual: temp & humidity) =====
+function drawChart() {
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth, cssH = 260;
+  canvas.width = cssW * dpr;
+  canvas.height = cssH * dpr;
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const pad = { l: 40, r: 14, t: 12, b: 28 };
+  const w = cssW - pad.l - pad.r;
+  const h = cssH - pad.t - pad.b;
+
+  // grid
+  ctx.strokeStyle = '#1c2a45';
+  ctx.lineWidth = 1;
+  ctx.fillStyle = '#8ea0c4';
+  ctx.font = '10px Segoe UI';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + (i/4)*h;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+w, y); ctx.stroke();
+    // temp scale on left
+    const tMin = SENSORS.T.min, tMax = SENSORS.T.max;
+    ctx.fillText((tMax - (tMax-tMin)*i/4).toFixed(SENSORS.T.scale), pad.l-6, y+3);
+  }
+  ctx.fillStyle = '#f87171';
+  ctx.textAlign = 'left';
+  ctx.fillText('°C', 4, pad.t - 4);
+
+  // humidity on right axis
+  const hData = state.history.H || [];
+  if (hData.length > 1) {
+    ctx.strokeStyle = '#1c2a45';
+    ctx.beginPath(); ctx.moveTo(pad.l+w, pad.t); ctx.lineTo(pad.l+w, pad.t+h); ctx.stroke();
+    ctx.fillStyle = '#38bdf8';
+    ctx.textAlign = 'left';
+    for (let i = 0; i <= 4; i++) {
+      const y = pad.t + (i/4)*h;
+      const hMin = SENSORS.H.min, hMax = SENSORS.H.max;
+      ctx.fillText((hMin + (hMax-hMin)*i/4).toFixed(SENSORS.H.scale), pad.l+w+6, y+3);
+    }
+    ctx.fillText('%', pad.l+w+6, pad.t-4);
+  }
+
+  // temp line
+  const tData = state.history.T || [];
+  if (tData.length > 1) {
+    ctx.strokeStyle = '#f87171';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    tData.forEach((p, i) => {
+      const x = pad.l + (i/(tData.length-1))*w;
+      const y = pad.t + h - ((p.v - SENSORS.T.min)/(SENSORS.T.max - SENSORS.T.min))*h;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  // humidity line
+  if (hData.length > 1) {
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    hData.forEach((p, i) => {
+      const x = pad.l + (i/(hData.length-1))*w;
+      const y = pad.t + h - ((p.v - SENSORS.H.min)/(SENSORS.H.max - SENSORS.H.min))*h;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  if (tData.length < 2 && hData.length < 2) {
+    ctx.fillStyle = '#8ea0c4';
+    ctx.font = '13px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('Waiting for sensor data...', cssW/2, cssH/2);
+  } else {
+    ctx.fillStyle = '#8ea0c4';
+    ctx.font = '12px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('🌡️ Temperature (red)   💧 Humidity (blue)', cssW/2, cssH-8);
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+
+// ===== Parse incoming packet =====
+function parsePacket(text) {
+  const re = /([A-Z]):\s*([-\d.]+)/g;
+  let m, found = false;
+  while ((m = re.exec(text)) !== null) {
+    const key = m[1];
+    if (SENSORS[key]) {
+      pushReading(key, parseFloat(m[2]), Date.now());
+      found = true;
+    }
+  }
+  return found;
+}
+
+// ===== Simulation =====
+function simulateOnce() {
+  const t = Date.now();
+  const packet = [];
+  for (const [key, s] of Object.entries(SENSORS)) {
+    let v;
+    if (key === 'M') {
+      v = Math.random() < 0.12 ? 1 : 0;
+    } else if (key === 'L') {
+      v = 600 + 350 * Math.sin(t/8000) + (Math.random()-0.5)*200;
+      v = Math.max(s.min, Math.min(s.max, v));
+    } else {
+      const base = (s.min + s.max)/2;
+      const amp = (s.max - s.min)/2;
+      v = base + amp*Math.sin(t/7000 + (key==='H' ? 2 : 0)) + (Math.random()-0.5)*amp*0.3;
+      v = Math.max(s.min, Math.min(s.max, v));
+    }
+    v = Number(v.toFixed(s.scale));
+    pushReading(key, v, t);
+    packet.push(`${key}:${v}`);
+  }
+  // show the simulated transfer packet
+  const pkt = packet.join(',');
+  packetInput.value = pkt;
+  packetInput.style.borderColor = 'var(--accent)';
+  addLog('Simulator', 'transfer', `Packet transferred → ${pkt}`, 'info');
+}
+
+function startSimulation() {
+  if (state.running) return;
+  stopAll();
+  state.running = true;
+  state.mode = 'simulate';
+  document.getElementById('btnSimulate').disabled = true;
+  document.getElementById('btnStop').disabled = false;
+  setSource('Simulating sensor data', 'on');
+  addLog('System', 'start', 'Simulation started', 'info');
+  simulateOnce();
+  const int = parseInt(document.getElementById('interval').value) || 2000;
+  state.timer = setInterval(simulateOnce, int);
+}
+
+// ===== Serial (microcontroller) =====
+async function connectSerial() {
+  if (state.portOpen) return;
+  if (!('serial' in navigator)) {
+    addLog('System', 'error', 'Web Serial not supported. Use Chrome/Edge.', 'alert');
+    return;
+  }
+  try {
+    const port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 9600 });
+    state.serialPort = port;
+    state.portOpen = true;
+    state.running = true;
+    state.mode = 'serial';
+    document.getElementById('btnSerial').textContent = '🔌 Serial Connected';
+    document.getElementById('btnStop').disabled = false;
+    setSource('Microcontroller connected', 'stream');
+
+    const reader = port.readable.getReader();
+    state.reader = reader;
+    const decoder = new TextDecoder();
+    (async () => {
+      let reading = true;
+      while (reading) {
+        try {
+          const { value, done } = await reader.read();
+          if (done) { reading = false; break; }
+          if (value) {
+            const chunk = decoder.decode(value);
+            state.serialBuf += chunk;
+            let idx;
+            while ((idx = state.serialBuf.indexOf('\n')) >= 0) {
+              const line = state.serialBuf.slice(0, idx).trim();
+              state.serialBuf = state.serialBuf.slice(idx+1);
+              if (line) {
+                packetInput.value = line;
+                if (parsePacket(line)) {
+                  addLog('Serial', 'transfer', `Packet received → ${line}`, 'info');
+                } else {
+                  addLog('Serial', 'raw', line, 'info');
+                }
+              }
+            }
+          }
+        } catch (e) { reading = false; }
+      }
+      disconnectSerial();
+    })();
+    addLog('Serial', 'connect', 'Microcontroller connected', 'info');
+  } catch (e) {
+    if (e.name !== 'NotFoundError') {
+      addLog('Serial', 'error', `Connection failed: ${e.message}`, 'alert');
+    }
+  }
+}
+
+async function disconnectSerial() {
+  if (state.reader) { try { await state.reader.cancel(); } catch(e){} state.reader=null; }
+  if (state.serialPort) { try { await state.serialPort.close(); } catch(e){} }
+  state.serialPort = null;
+  state.portOpen = false;
+  document.getElementById('btnSerial').textContent = '🔌 Connect Microcontroller (Serial)';
+  if (state.mode === 'serial') {
+    state.running = false;
+    setSource('No source connected', '');
+  }
+  addLog('Serial', 'disconnect', 'Microcontroller disconnected', 'info');
+}
+
+function stopAll() {
+  if (state.timer) { clearInterval(state.timer); state.timer = null; }
+  if (state.mode === 'serial') disconnectSerial();
+  state.running = false;
+  state.mode = null;
+  document.getElementById('btnSimulate').disabled = false;
+  document.getElementById('btnStop').disabled = true;
+  setSource('No source connected', '');
+  addLog('System', 'stop', 'Data stream stopped', 'info');
+}
+
+function setSource(text, cls) {
+  document.getElementById('sourceLabel').textContent = text;
+  const dot = document.getElementById('connDot');
+  dot.className = 'dot' + (cls ? ' ' + cls : '');
+}
+
+// ===== Event listeners =====
+document.getElementById('btnSimulate').addEventListener('click', startSimulation);
+document.getElementById('btnSerial').addEventListener('click', connectSerial);
+document.getElementById('btnStop').addEventListener('click', stopAll);
+
+// Manual packet parse
+document.getElementById('btnParse').addEventListener('click', () => {
+  const text = packetInput.value.trim();
+  if (!text) { addLog('System', 'error', 'No packet to parse', 'alert'); return; }
+  if (parsePacket(text)) {
+    addLog('Manual', 'transfer', `Packet parsed → ${text}`, 'info');
+  } else {
+    addLog('Manual', 'error', 'No valid sensor keys found in packet', 'alert');
+  }
+});
+document.getElementById('btnClearPacket').addEventListener('click', () => {
+  packetInput.value = '';
+  addLog('System', 'clear', 'Packet field cleared', 'info');
+});
+packetInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('btnParse').click();
+});
+
+window.addEventListener('resize', () => { if (Object.keys(state.values).length) drawChart(); });
+
+addLog('System', 'ready', 'Dashboard ready. Start simulation, connect a microcontroller, or paste a packet to transfer sensor data.', 'info');
+</script>
+</body>
+</html>
